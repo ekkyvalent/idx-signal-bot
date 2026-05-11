@@ -1,0 +1,5 @@
+yfinance
+pandas
+numpy
+python-telegram-bot[job-queue]
+pytz

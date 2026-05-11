@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.log
+signals_latest.md
+.env
+transactions.json
