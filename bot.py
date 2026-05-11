@@ -67,7 +67,7 @@ def fmt_signals(results, today_str):
         lines.append(
             f"*{rank}. {s['ticker']}*{hammer} {emoji} {s.get('tier','')} — Score {s['score']}/10\n"
             f"• Buy: Rp {s['price']:,}\n"
-            f"• Target: Rp {s['target']:,} (+3%) — take profit here\n"
+            f"• Target: Rp {s['target']:,} (+5%) — take profit here\n"
             f"• Stop: Rp {s['stop']:,} (-{risk:.1f}%) | Exit after 3 trading days regardless\n"
             f"• Lots: {s['lots']} lots ≈ Rp {cost:,}\n"
             f"• RSI {s['rsi']} | Vol {s['vol_ratio']}x | 1d {s['mom1d']:+.1f}% | 5d {s['mom5d']:+.1f}% | {s.get('trend','')}"

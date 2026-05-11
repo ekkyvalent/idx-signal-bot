@@ -255,7 +255,7 @@ def _score(df, ticker, tier, ihsg_df=None):
         # MA20 trend is shown as context, not scored
         trend = "↑ uptrend" if price > ma20 else "↓ downtrend"
 
-        target = round(price * 1.03)   # +3% quick-flip target
+        target = round(price * 1.05)   # +5% take-profit target
 
         return {
             "ticker":     ticker,
@@ -372,7 +372,7 @@ def review_portfolio(transactions_file, signals_map=None):
             # Time stop — exit regardless of P&L
             action = f"EXIT — 3-day limit reached ({'up' if pct >= 0 else 'down'} {pct:+.1f}%)"
         elif target and now >= target:
-            action = "TAKE PROFIT — hit +5%"
+            action = "TAKE PROFIT — hit target"
         elif stop and now <= stop:
             action = "CUT LOSS — below stop"
         elif pct >= 5:

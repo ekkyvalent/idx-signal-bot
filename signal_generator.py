@@ -43,7 +43,7 @@ def fmt_signals_md(results):
         lines.append(
             f"### {rank}. {s['ticker']} [{s.get('tier','')}] — Score {s['score']}/10\n"
             f"- **Buy at:** Rp {s['price']:,}\n"
-            f"- **Target:** Rp {s['target']:,} (+3%) — take profit here\n"
+            f"- **Target:** Rp {s['target']:,} (+5%) — take profit here\n"
             f"- **Stop-loss:** Rp {s['stop']:,} (-{risk:.1f}%) | Exit after 3 trading days regardless\n"
             f"- **Lots:** {s['lots']} lots ({s['lots']*100:,} shares) ≈ Rp {cost:,}\n"
             f"- **Why:** RSI {s['rsi']} | Volume {s['vol_ratio']}x avg | "

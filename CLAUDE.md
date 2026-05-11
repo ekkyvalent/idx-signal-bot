@@ -163,4 +163,4 @@ The scanner uses a hardcoded IDX 2026 holiday calendar (`IDX_HOLIDAYS_2026` in `
 - Data source is Yahoo Finance end-of-day — signals use yesterday's close, not today's open
 - No macro/news awareness — a stock can look oversold but be in a fundamental downtrend
 - Backtested against 1 year of IDX data (May 2025–May 2026)
-- Best config: score ≥ 9, +3% target, Exit Day 3 → +5.8% annual on Rp 1M simulation, 54.9% win rate
+- Best config: score ≥ 9, +5% target, Exit Day 3 → +5.8% annual on Rp 1M simulation, 54.9% win rate
