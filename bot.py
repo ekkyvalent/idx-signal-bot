@@ -7,7 +7,7 @@ Scheduled morning report at 08:15 WIB every weekday.
 import asyncio
 import logging
 import os
-from datetime import date, time
+from datetime import date, datetime, time
 
 import pytz
 from telegram import Update
@@ -16,6 +16,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from scanner import (
     run_scan, review_portfolio,
     log_buy, log_sell, load_transactions,
+    fetch_current_prices,
     FEE_BUY, FEE_SELL,
 )
 
@@ -28,6 +29,9 @@ TXN_FILE  = os.path.join(DATA_DIR, "transactions.json")
 
 WIB = pytz.timezone("Asia/Jakarta")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# position IDs already notified this session — reset on bot restart
+_alerted: set[str] = set()
 
 # ── Formatting ────────────────────────────────────────────────────────────────
 
@@ -166,7 +170,9 @@ async def cmd_bought(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("LOTS and PRICE must be numbers. Example: /bought HRUM 5 910")
         return
 
-    entry = log_buy(TXN_FILE, ticker, lots, buy_price)
+    target = round(buy_price * 1.05)
+    stop   = round(buy_price * 0.95)
+    entry  = log_buy(TXN_FILE, ticker, lots, buy_price, target=target, stop=stop)
     shares = lots * 100
     total  = buy_price * shares
     fee    = entry["fee_buy"]
@@ -175,7 +181,8 @@ async def cmd_bought(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ *Logged: {entry['id']}*\n\n"
         f"• {ticker} — {lots} lots ({shares:,} shares)\n"
         f"• Buy price: Rp {buy_price:,}\n"
-        f"• Total cost: Rp {total:,} + fee Rp {fee:,}\n\n"
+        f"• Total cost: Rp {total:,} + fee Rp {fee:,}\n"
+        f"• Target: Rp {target:,} (+5%) | Alert below: Rp {stop:,} (-5%)\n\n"
         f"Tell me when you sell with:\n/sold {ticker} SELL\\_PRICE",
         parse_mode="Markdown"
     )
@@ -201,6 +208,8 @@ async def cmd_sold(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not match:
         await update.message.reply_text(f"No open position found for {ticker}.")
         return
+    _alerted.discard(f"{match['id']}:tp")
+    _alerted.discard(f"{match['id']}:sl")
 
     pnl  = match["pnl"]
     sign = "+" if pnl >= 0 else ""
@@ -258,6 +267,68 @@ async def morning_report(context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ── Price alert monitor ───────────────────────────────────────────────────────
+
+async def price_alert_check(context: ContextTypes.DEFAULT_TYPE):
+    """Every 5 min during IDX market hours — alert if any open position hits target or -5%."""
+    now_wib = datetime.now(WIB)
+    if now_wib.weekday() >= 5:
+        return
+    market_open  = now_wib.replace(hour=9,  minute=0,  second=0, microsecond=0)
+    market_close = now_wib.replace(hour=15, minute=30, second=0, microsecond=0)
+    if not (market_open <= now_wib <= market_close):
+        return
+
+    data = load_transactions(TXN_FILE)
+    open_pos = [t for t in data["transactions"] if t["status"] == "open"]
+    if not open_pos:
+        return
+
+    tickers = [t["ticker"] for t in open_pos]
+    prices  = await asyncio.to_thread(fetch_current_prices, tickers)
+
+    for pos in open_pos:
+        ticker    = pos["ticker"]
+        pos_id    = pos["id"]
+        now_price = prices.get(ticker)
+        if now_price is None:
+            continue
+
+        buy    = pos["buy_price"]
+        target = pos.get("target_price") or 0
+        stop   = pos.get("stop_loss") or 0
+        pct    = (now_price - buy) / buy * 100
+
+        if target and now_price >= target:
+            key = f"{pos_id}:tp"
+            if key not in _alerted:
+                _alerted.add(key)
+                await context.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=(
+                        f"🎯 *TAKE PROFIT — {ticker}*\n\n"
+                        f"• Now: Rp {now_price:,.0f} | Target: Rp {target:,}\n"
+                        f"• Bought at Rp {buy:,} ({pct:+.1f}%)\n"
+                        f"→ Price has hit your +5% target!"
+                    ),
+                    parse_mode="Markdown"
+                )
+        elif stop and now_price <= stop:
+            key = f"{pos_id}:sl"
+            if key not in _alerted:
+                _alerted.add(key)
+                await context.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=(
+                        f"⚠️ *PRICE ALERT — {ticker}*\n\n"
+                        f"• Now: Rp {now_price:,.0f} | Alert level: Rp {stop:,}\n"
+                        f"• Bought at Rp {buy:,} ({pct:+.1f}%)\n"
+                        f"→ Down -5% from your entry. FYI only — hold to day 3 per strategy."
+                    ),
+                    parse_mode="Markdown"
+                )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -285,6 +356,9 @@ def main():
         time=time(hour=1, minute=15, tzinfo=pytz.utc),
         days=(0, 1, 2, 3, 4),  # Mon–Fri only
     )
+
+    # Price alert — every 5 min, market hours filter inside the handler
+    app.job_queue.run_repeating(price_alert_check, interval=300, first=60)
 
     logging.info("Bot started. Polling...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

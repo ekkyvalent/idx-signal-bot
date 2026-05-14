@@ -16,8 +16,8 @@ import yfinance as yf
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-FEE_BUY        = 0.001      # 0.1% Stockbit buy fee
-FEE_SELL       = 0.002      # 0.2% Stockbit sell fee
+FEE_BUY        = 0.0015     # 0.15% Stockbit buy fee
+FEE_SELL       = 0.0035     # 0.25% broker + 0.1% PPh Final sell tax
 
 # IDX public holidays 2026 — market closed on these dates
 IDX_HOLIDAYS_2026 = np.busdaycalendar(holidays=[
@@ -155,6 +155,32 @@ def _batch_fetch(tickers, period="3mo"):
         except Exception:
             continue
     return result
+
+
+def fetch_current_prices(tickers):
+    """Intraday price snapshot for a small set of tickers. Returns {ticker: float}."""
+    if not tickers:
+        return {}
+    jk = [f"{t}.JK" for t in tickers]
+    try:
+        raw = yf.download(
+            jk, period="1d", interval="5m",
+            progress=False, auto_adjust=True, group_by="ticker",
+        )
+    except Exception:
+        return {}
+    prices = {}
+    for ticker, jk_ticker in zip(tickers, jk):
+        try:
+            lvl0 = raw.columns.get_level_values(0)
+            df = raw[jk_ticker].dropna(how="all") if jk_ticker in lvl0 \
+                 else raw.dropna(how="all")
+            val = df["Close"].dropna()
+            if not val.empty:
+                prices[ticker] = float(val.iloc[-1])
+        except Exception:
+            continue
+    return prices
 
 
 def fetch_ihsg(period="3mo"):

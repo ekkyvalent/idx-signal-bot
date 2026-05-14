@@ -7,7 +7,7 @@ Starting capital Rp 100K per trade. Not a daily buyer — only acts on strong si
 ## Trading Setup
 - **Broker:** Stockbit
 - **Budget per trade:** Rp 100,000 (starting, grows with performance)
-- **Fees:** 0.1% buy / 0.2% sell (Stockbit standard)
+- **Fees:** 0.15% buy / 0.35% sell (0.25% broker + 0.1% PPh Final)
 - **Min lot:** 100 shares
 - **Max price per share:** Rp 1,000 (so 1 lot fits within Rp 100K budget)
 
