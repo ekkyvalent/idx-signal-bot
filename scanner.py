@@ -328,7 +328,7 @@ def run_scan(on_progress=None):
         ihsg_close   = ihsg_df["Close"].squeeze()
         ihsg_bearish = float(ihsg_close.iloc[-1]) < float(ihsg_close.iloc[-20:].mean())
 
-    min_score_adj = {tier: v + (2 if ihsg_bearish else 0) for tier, v in MIN_SCORE.items()}
+    min_score_adj = {tier: min(v + (2 if ihsg_bearish else 0), 10) for tier, v in MIN_SCORE.items()}
 
     results = []
     for i, (ticker, tier) in enumerate(_UNIVERSE):
@@ -340,6 +340,7 @@ def run_scan(on_progress=None):
         s = _score(df, ticker, tier, ihsg_df)
         if s and s["score"] >= min_score_adj[tier]:
             s["market"] = "bear" if ihsg_bearish else "bull"
+
             results.append(s)
 
     results.sort(key=lambda x: x["score"], reverse=True)
