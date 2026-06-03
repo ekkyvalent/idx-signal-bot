@@ -22,8 +22,9 @@ from scanner import (
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID   = int(os.environ["CHAT_ID"])
+BOT_TOKEN      = os.environ["BOT_TOKEN"]
+GROUP_CHAT_ID  = int(os.environ["GROUP_CHAT_ID"])   # group for reports & alerts
+AUTHORIZED_UID = int(os.environ["AUTHORIZED_UID"])  # Ekky's Telegram ID
 DATA_DIR  = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
 TXN_FILE  = os.path.join(DATA_DIR, "transactions.json")
 
@@ -100,7 +101,7 @@ def _blocking_scan():
 # ── Handlers ──────────────────────────────────────────────────────────────────
 
 def authorized(update: Update) -> bool:
-    return update.effective_user.id == CHAT_ID
+    return update.effective_user.id == AUTHORIZED_UID
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -256,12 +257,12 @@ async def morning_report(context: ContextTypes.DEFAULT_TYPE):
     sig_text  = fmt_signals(results, today_str)
 
     await context.bot.send_message(
-        chat_id=CHAT_ID,
+        chat_id=GROUP_CHAT_ID,
         text=f"☀️ *Good morning! IDX Report — {today_str}*\n\n{port_text}",
         parse_mode="Markdown"
     )
     await context.bot.send_message(
-        chat_id=CHAT_ID,
+        chat_id=GROUP_CHAT_ID,
         text=f"📊 *Buy Signals — {today_str}*\n\n{sig_text}",
         parse_mode="Markdown"
     )
@@ -304,7 +305,7 @@ async def price_alert_check(context: ContextTypes.DEFAULT_TYPE):
             if key not in _alerted:
                 _alerted.add(key)
                 await context.bot.send_message(
-                    chat_id=CHAT_ID,
+                    chat_id=GROUP_CHAT_ID,
                     text=(
                         f"🎯 *TAKE PROFIT — {ticker}*\n\n"
                         f"• Now: Rp {now_price:,.0f} | Target: Rp {target:,}\n"
@@ -318,7 +319,7 @@ async def price_alert_check(context: ContextTypes.DEFAULT_TYPE):
             if key not in _alerted:
                 _alerted.add(key)
                 await context.bot.send_message(
-                    chat_id=CHAT_ID,
+                    chat_id=GROUP_CHAT_ID,
                     text=(
                         f"⚠️ *PRICE ALERT — {ticker}*\n\n"
                         f"• Now: Rp {now_price:,.0f} | Alert level: Rp {stop:,}\n"
