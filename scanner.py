@@ -100,6 +100,16 @@ def _rsi(series, period=14):
     return 100 - (100 / (1 + rs))
 
 
+def _macd(series, fast=12, slow=26, signal=9):
+    """Return (macd_line, signal_line, histogram) using exponential moving averages."""
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    macd_signal = macd_line.ewm(span=signal, adjust=False).mean()
+    macd_histogram = macd_line - macd_signal
+    return macd_line, macd_signal, macd_histogram
+
+
 def _atr(df, period=14):
     high  = df["High"].squeeze()
     low   = df["Low"].squeeze()
@@ -223,6 +233,15 @@ def _score(df, ticker, tier, ihsg_df=None):
         mom1d  = (float(close.iloc[-1]) - float(close.iloc[-2])) / float(close.iloc[-2]) * 100
         mom5d  = (float(close.iloc[-1]) - float(close.iloc[-6])) / float(close.iloc[-6]) * 100
 
+        macd_line, macd_signal_line, macd_hist = _macd(close)
+        macd_hist_now   = float(macd_hist.iloc[-1])
+        macd_hist_prev  = float(macd_hist.iloc[-2])
+        macd_hist_cross = False
+        if len(macd_hist) >= 3:
+            macd_hist_prev2 = float(macd_hist.iloc[-3])
+            macd_hist_cross = (macd_hist_now > 0 and macd_hist_prev <= 0) or \
+                              (macd_hist_prev > 0 and macd_hist_prev2 <= 0)
+
         sup_20 = float(close.iloc[-20:].min())
         res_20 = float(close.iloc[-20:].max())
         ma20   = float(close.iloc[-20:].mean())
@@ -270,6 +289,12 @@ def _score(df, ticker, tier, ihsg_df=None):
             if mom5d > ihsg_mom5d:
                 sc += 1   # held up better than the market
 
+        # 7. MACD momentum (max 2 points)
+        if macd_hist_now > 0:
+            sc += 1   # histogram positive — bullish momentum
+        if macd_hist_cross:
+            sc += 1   # bullish crossover within last 2 bars
+
         sc = min(sc, 10)  # cap at 10 for consistent display
 
         # Lot sizing: based on score strength within budget
@@ -302,6 +327,9 @@ def _score(df, ticker, tier, ihsg_df=None):
             "hammer":     _hammer(df),
             "lots":       lots,
             "score":      sc,
+            "macd_histogram": round(macd_hist_now, 2),
+            "macd_line":    round(float(macd_line.iloc[-1]), 2),
+            "macd_signal":  round(float(macd_signal_line.iloc[-1]), 2),
         }
     except Exception:
         return None

@@ -48,7 +48,8 @@ def fmt_signals_md(results):
             f"- **Lots:** {s['lots']} lots ({s['lots']*100:,} shares) ≈ Rp {cost:,}\n"
             f"- **Why:** RSI {s['rsi']} | Volume {s['vol_ratio']}x avg | "
             f"1d {s['mom1d']:+.1f}% | 5d {s['mom5d']:+.1f}% | {s.get('trend','')} | "
-            f"Support Rp {s['support']:,} / Resistance Rp {s['resistance']:,}\n"
+            f"Support Rp {s['support']:,} / Resistance Rp {s['resistance']:,} | "
+            f"MACD hist {s.get('macd_histogram', '?'):+g}\n"
         )
     return "\n".join(lines)
 
