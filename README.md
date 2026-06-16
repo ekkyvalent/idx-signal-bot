@@ -30,37 +30,13 @@ No percentage-based stop-loss. No panic selling. Hold until one triggers.
 
 ## Scoring System
 
-The bot uses **two scoring modes** and switches between them automatically based on IHSG position relative to its 20-day moving average.
+Each stock is scored across **3 independent categories** simultaneously. The best match wins. Priority tiebreaker: Reversal > Breakout > Momentum (reversal is most time-sensitive).
 
-### Mode Detection
+Every signal displays a category tag: **🔄 Reversal**, **🚀 Breakout**, or **🏄 Momentum**.
 
-- **Momentum Mode** — active when IHSG is **above** its 20-day MA (bull market). Catches breakouts, trending stocks, and accumulation.
-- **Mean-Reversion Mode** — active when IHSG is **below** its 20-day MA (bear/sideways market). Catches oversold bounces, capitulation, and support bounces.
+### 🔄 Reversal (Oversold bounce / support bounce)
 
-Each signal displays a mode tag: **📈Momentum** or **📉Reversal**.
-
-### Mode A: Momentum (Bull Market)
-
-Used when IHSG is in an uptrend. Rewards stocks that are breaking out with volume and building bullish structure.
-
-| Signal | Points | Logic |
-|---|---|---|
-| Price > MA20 **and** MA50 | +2 | Bull structure confirmed — uptrend on both timeframes |
-| Price near 20-day high + vol >= 1.2x avg | +2 | Volume-confirmed breakout from range |
-| Price near 20-day high (low vol) | +1 | Breaking out, but need volume confirmation |
-| Volume >= 1.5x avg + up day > +2% | +2 | Strong accumulation — big money buying |
-| Volume >= 1.2x avg + up day > +1% | +1 | Mild accumulation |
-| RSI 50-70 | +1 | Goldilocks zone — momentum, not yet overbought |
-| ADX > 30 | +2 | Strong trend confirmed |
-| ADX 25-30 | +1 | Trending, but not extreme |
-| MACD histogram positive | +1 | Bullish momentum |
-| MACD bullish crossover (last 2 bars) | +1 | Fresh momentum trigger |
-
-**Max: 10 points**
-
-### Mode B: Mean-Reversion (Bear/Sideways)
-
-Used when IHSG is below its 20-day MA. Rewards stocks that are deeply oversold and showing capitulation or support bounces.
+Best for bear markets, overreactions, and capitulation events.
 
 | Signal | Points | Logic |
 |---|---|---|
@@ -74,18 +50,59 @@ Used when IHSG is below its 20-day MA. Rewards stocks that are deeply oversold a
 | 5-day pullback -2% to -8% | +2 | Healthy dip within normal range |
 | 5-day drop > -8% | +1 | Bigger drop, higher risk/reward |
 | Price at or near 20-day support | +2 | Sitting on the nearest floor |
-| Price at or near 50-day support | +1 | Also at longer-term support = stronger floor |
+| Price at or near 50-day support | +1 | Also at longer-term support |
 | Hammer candle | +2 | Buyers aggressively defended the low |
 | Outperformed IHSG (5d) | +1 | Relative strength vs the market |
-| MACD histogram positive | +1 | Bullish momentum diverge |
+| MACD histogram positive | +1 | Bullish momentum |
 | MACD bullish crossover | +1 | Fresh momentum trigger |
 
-**Max: 10 points**
+**Max: 10 points | Stop:** ATR below 20-day support (max -8%)
+
+### 🚀 Breakout (Range breakout / consolidation end)
+
+Best for sideways-to-bull transitions and stocks emerging from consolidation.
+
+| Signal | Points | Logic |
+|---|---|---|
+| Near 20-day high + vol >= 1.2x + up day | +2 | Volume-confirmed breakout from range |
+| Near 20-day high only | +1 | Breaking out, volume confirmation pending |
+| Volume >= 1.5x + up day | +2 | Strong accumulation on up day |
+| Volume >= 1.2x + up day | +1 | Mild accumulation on up day |
+| Above MA20 | +1 | Short-term uptrend |
+| Above MA50 | +1 | Medium-term uptrend |
+| RSI 50-65 | +1 | Breakout zone — not exhausted |
+| 5-day return +2% to +10% | +2 | Breaking out of consolidation |
+| 5-day return > +10% | +1 | Already running, late to breakout |
+| ADX > 30 | +2 | Confirmed trend |
+| ADX 25-30 | +1 | Trending, but not extreme |
+| MACD bullish crossover | +1 | Fresh momentum trigger |
+
+**Max: 10 points | Stop:** ATR below MA20 (max -6%)
+
+### 🏄 Momentum (Trending continuation)
+
+Best for established bull markets and strong ADX trends.
+
+| Signal | Points | Logic |
+|---|---|---|
+| Price > MA20 **and** MA50 | +2 | Bull structure confirmed |
+| Price > MA20 only | +1 | Early uptrend |
+| ADX > 30 | +2 | Strong trend confirmed |
+| ADX 25-30 | +1 | Trending, but not extreme |
+| Volume >= 1.5x + up day > +1% | +2 | Strong accumulation |
+| Volume >= 1.2x + up day > +1% | +1 | Mild accumulation |
+| RSI 50-70 | +1 | Healthy momentum zone |
+| MACD histogram positive | +1 | Bullish momentum |
+| MACD bullish crossover | +1 | Fresh momentum trigger |
+| Near 20-day high | +1 | Price confirming trend |
+| 5-day return +2% to +10% | +1 | Healthy trending momentum |
+
+**Max: 10 points | Stop:** ATR below MA20 (max -6%)
 
 ### Additional Filters
 
-- **Minimum score to appear:** 9 for all tiers
-- **When IHSG is in a downtrend:** threshold raised to 10 (effectively 11, capped) — only the strongest setups qualify
+| **Minimum score to appear:** 8 for all tiers
+| **When IHSG is in a downtrend:** threshold raised to 9 — only the strongest setups qualify
 - **Average daily volume:** must be >= 500,000 shares over 20 days — illiquid stocks are always excluded
 
 ### Signal Context

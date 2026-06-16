@@ -47,11 +47,11 @@ BUDGET         = 100_000    # Rp 100K per trade
 MAX_PRICE      = BUDGET // 100  # Must afford ≥ 1 lot (100 shares)
 MIN_AVG_VOLUME = 500_000    # 500K shares/day — filters illiquid stocks
 
-# Min score to appear in results. Raised by 2 when IHSG is in a downtrend.
+# Min score to appear in results. Raised by 1 when IHSG is in a downtrend.
 MIN_SCORE = {
-    "Blue Chip": 9,
-    "Mid-cap":   9,
-    "Small Cap": 9,
+    "Blue Chip": 8,
+    "Mid-cap":   8,
+    "Small Cap": 8,
 }
 
 # ── Stock universes ───────────────────────────────────────────────────────────
@@ -317,37 +317,46 @@ def _score(df, ticker, tier, ihsg_df=None):
                 rev_sc += 1
 
         if macd_hist_now > 0:  rev_sc += 1
+        if macd_hist_cross:    rev_sc += 1
         rev_sc = min(rev_sc, 10)
         rev_stop = max(round(sup_20 - 1.5 * atr14), round(price * 0.92))
 
         # ── Category 2: Breakout 🚀 (range breakout / consolidation end) ────
         brk_sc = 0
-        vol_confirmed = (vol_ratio >= 1.2 and mom1d > 0)
 
-        if near_high and vol_confirmed:
+        # 1. Price near high + volume confirmation
+        if near_high and vol_ratio >= 1.2 and mom1d > 0:
             brk_sc += 2  # volume-confirmed breakout
         elif near_high:
             brk_sc += 1  # price breaking out, volume pending
 
-        if vol_ratio >= 1.5:
+        # 2. Volume + direction — rising volume on an up day
+        if vol_ratio >= 1.5 and mom1d > 0:
             brk_sc += 2
-        elif vol_ratio >= 1.2:
+        elif vol_ratio >= 1.2 and mom1d > 0:
             brk_sc += 1
 
+        # 3. Price structure
         if above_ma20: brk_sc += 1
         if above_ma50: brk_sc += 1
 
+        # 4. RSI breakout zone (not exhausted)
         if 50 <= r <= 65:
-            brk_sc += 1  # breakout RSI zone (not exhausted)
+            brk_sc += 1
 
+        # 5. 5d momentum — breaking out of consolidation
         if 2 < mom5d < 10:
-            brk_sc += 2  # breaking out of consolidation
+            brk_sc += 2
         elif mom5d > 10:
-            brk_sc += 1  # already ran, late to breakout
+            brk_sc += 1
 
-        if 25 < adx14 < 40:
-            brk_sc += 1  # trend just starting, not over-extended
+        # 6. ADX trend strength (broad)
+        if adx14 > 30:
+            brk_sc += 2
+        elif adx14 > 25:
+            brk_sc += 1
 
+        # 7. MACD
         if macd_hist_cross:
             brk_sc += 1
 
@@ -357,32 +366,39 @@ def _score(df, ticker, tier, ihsg_df=None):
         # ── Category 3: Momentum 🏄 (trending / continuation) ───────────────
         mom_sc = 0
 
+        # 1. Price structure — above key MAs
         if above_ma20 and above_ma50:
             mom_sc += 2  # bull structure
         elif above_ma20:
             mom_sc += 1
 
+        # 2. ADX trend strength
         if adx14 > 30:
             mom_sc += 2
         elif adx14 > 25:
             mom_sc += 1
 
+        # 3. Volume + direction — rising volume on an up day
         if vol_ratio >= 1.5 and mom1d > 1:
             mom_sc += 2
         elif vol_ratio >= 1.2 and mom1d > 1:
             mom_sc += 1
 
-        if 55 <= r <= 70:
-            mom_sc += 1  # momentum RSI zone
+        # 4. RSI momentum zone (healthy, not exhausted)
+        if 50 <= r <= 70:
+            mom_sc += 1
 
+        # 5. MACD momentum
         if macd_hist_now > 0:
             mom_sc += 1
         if macd_hist_cross:
             mom_sc += 1
 
+        # 6. Near 20-day high
         if near_high:
             mom_sc += 1
 
+        # 7. Healthy 5d momentum
         if 2 < mom5d < 10:
             mom_sc += 1
 
@@ -472,7 +488,7 @@ def run_scan(on_progress=None):
         ihsg_close   = ihsg_df["Close"].squeeze()
         ihsg_bearish = float(ihsg_close.iloc[-1]) < float(ihsg_close.iloc[-20:].mean())
 
-    min_score_adj = {tier: min(v + (2 if ihsg_bearish else 0), 10) for tier, v in MIN_SCORE.items()}
+    min_score_adj = {tier: min(v + (1 if ihsg_bearish else 0), 10) for tier, v in MIN_SCORE.items()}
 
     results = []
     for i, (ticker, tier) in enumerate(_UNIVERSE):
