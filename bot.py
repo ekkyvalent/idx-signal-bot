@@ -69,8 +69,9 @@ def fmt_signals(results, today_str):
         cost    = s["price"] * s["lots"] * 100
         emoji   = tier_emoji.get(s.get("tier", ""), "⚪")
         hammer  = " 🔨" if s.get("hammer") else ""
+        mode_tag = " 📈Momentum" if s.get("mode") == "momentum" else " 📉Reversal"
         lines.append(
-            f"*{rank}. {s['ticker']}*{hammer} {emoji} {s.get('tier','')} — Score {s['score']}/10\n"
+            f"*{rank}. {s['ticker']}*{hammer}{mode_tag} {emoji} {s.get('tier','')} — Score {s['score']}/10\n"
             f"• Buy: Rp {s['price']:,}\n"
             f"• Target: Rp {s['target']:,} (+5%) — take profit here\n"
             f"• Stop: Rp {s['stop']:,} (-{risk:.1f}%) | Exit after 3 trading days regardless\n"

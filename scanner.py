@@ -141,6 +141,38 @@ def _hammer(df):
         return False
 
 
+def _adx(df, period=14):
+    """Return ADX (trend strength) for the last candle. >25 = trending."""
+    try:
+        high  = df["High"].squeeze()
+        low   = df["Low"].squeeze()
+        close = df["Close"].squeeze()
+
+        high_diff = high.diff()
+        low_diff  = low.diff()
+        pos_dm = high_diff.where((high_diff > 0) & (high_diff > -low_diff), 0)
+        neg_dm = -low_diff.where((-low_diff > 0) & (-low_diff > high_diff), 0)
+
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low  - close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+
+        tr_s = tr.rolling(period).mean()
+        pos_dm_s = pos_dm.rolling(period).mean()
+        neg_dm_s = neg_dm.rolling(period).mean()
+
+        pos_di = 100 * pos_dm_s / tr_s.replace(0, np.nan)
+        neg_di = 100 * neg_dm_s / tr_s.replace(0, np.nan)
+
+        dx = 100 * (pos_di - neg_di).abs() / (pos_di + neg_di).replace(0, np.nan)
+        adx = dx.rolling(period).mean()
+        return float(adx.iloc[-1])
+    except Exception:
+        return 0.0
+
+
 # ── Data fetching ─────────────────────────────────────────────────────────────
 
 def _batch_fetch(tickers, period="3mo"):
@@ -208,9 +240,11 @@ def fetch_ihsg(period="3mo"):
 
 # ── Core scoring (pure function — slice-safe for backtesting) ─────────────────
 
-def _score(df, ticker, tier, ihsg_df=None):
+def _score(df, ticker, tier, ihsg_df=None, mode="mean-reversion"):
     """
     Score a stock from its OHLCV DataFrame. Pass a time-sliced df for backtesting.
+    mode="mean-reversion" for bear/sideways markets (catches oversold bounces).
+    mode="momentum" for bull markets (catches breakouts and trending stocks).
     Returns a dict or None if the stock fails any filter.
     """
     try:
@@ -225,10 +259,10 @@ def _score(df, ticker, tier, ihsg_df=None):
         if avg_vol < MIN_AVG_VOLUME:
             return None
 
-        # ── Core metrics ────────────────────────────────────────────────────
-        r      = float(_rsi(close).iloc[-1])
-        vol_td = float(volume.iloc[-1])
-        vol_ratio = vol_td / avg_vol
+        # ── Core metrics (shared across modes) ──────────────────────────────
+        r           = float(_rsi(close).iloc[-1])
+        vol_td      = float(volume.iloc[-1])
+        vol_ratio   = vol_td / avg_vol
 
         mom1d  = (float(close.iloc[-1]) - float(close.iloc[-2])) / float(close.iloc[-2]) * 100
         mom5d  = (float(close.iloc[-1]) - float(close.iloc[-6])) / float(close.iloc[-6]) * 100
@@ -248,65 +282,109 @@ def _score(df, ticker, tier, ihsg_df=None):
 
         sup_50 = float(close.iloc[-50:].min()) if len(close) >= 50 else sup_20
         res_50 = float(close.iloc[-50:].max()) if len(close) >= 50 else res_20
+        ma50   = float(close.iloc[-50:].mean()) if len(close) >= 50 else ma20
 
         atr14  = _atr(df)
+        adx14  = _adx(df)
 
-        # ATR-based stop: support minus 1.5 ATRs, never deeper than -8%
-        stop = max(round(sup_20 - 1.5 * atr14), round(price * 0.92))
+        # ── Mode A: Mean-Reversion (bear/sideways) ──────────────────────────
+        if mode == "mean-reversion":
+            sc = 0
 
-        # ── Scoring ─────────────────────────────────────────────────────────
-        sc = 0
+            # 1. RSI (mean reversion)
+            if   r < 30: sc += 3   # very oversold
+            elif r < 40: sc += 2
+            elif r < 50: sc += 1
 
-        # 1. RSI (mean reversion)
-        if   r < 30: sc += 3   # very oversold
-        elif r < 40: sc += 2
-        elif r < 50: sc += 1
+            # 2. Directional volume — capitulation / accumulation
+            if   vol_ratio >= 1.5 and mom1d < -2:  sc += 3  # capitulation
+            elif vol_ratio >= 1.2 and mom1d < -2:  sc += 2  # elevated sell volume
+            elif vol_ratio >= 2.0 and mom1d > 1:   sc += 2  # strong momentum up
+            elif vol_ratio >= 1.5 and mom1d > 1:   sc += 1  # mild momentum up
 
-        # 2. Directional volume — KEY FIX vs old model
-        #    High vol + down day = capitulation (best mean-reversion buy signal)
-        #    High vol + up day   = momentum / accumulation
-        if   vol_ratio >= 1.5 and mom1d < -2:  sc += 3  # capitulation
-        elif vol_ratio >= 1.2 and mom1d < -2:  sc += 2  # elevated sell volume
-        elif vol_ratio >= 2.0 and mom1d > 1:   sc += 2  # strong momentum up
-        elif vol_ratio >= 1.5 and mom1d > 1:   sc += 1  # mild momentum up
+            # 3. 5-day pullback
+            if  -8 < mom5d < -2:   sc += 2   # healthy dip
+            elif mom5d <= -8:       sc += 1   # bigger drop
 
-        # 3. 5-day pullback
-        if  -8 < mom5d < -2:   sc += 2   # healthy dip — not a crash
-        elif mom5d <= -8:       sc += 1   # bigger drop — higher risk, higher reward
+            # 4. Multi-timeframe support
+            if price <= sup_20 * 1.02: sc += 2
+            if price <= sup_50 * 1.02: sc += 1
 
-        # 4. Multi-timeframe support
-        if price <= sup_20 * 1.02: sc += 2  # at 20-day support
-        if price <= sup_50 * 1.02: sc += 1  # also at 50-day support = stronger floor
+            # 5. Hammer candle
+            if _hammer(df): sc += 2
 
-        # 5. Hammer candle — buyers stepped in at the low
-        if _hammer(df): sc += 2
+            # 6. Relative strength vs IHSG
+            if ihsg_df is not None and len(ihsg_df) >= 6:
+                ihsg_close = ihsg_df["Close"].squeeze()
+                ihsg_mom5d = (float(ihsg_close.iloc[-1]) - float(ihsg_close.iloc[-6])) \
+                             / float(ihsg_close.iloc[-6]) * 100
+                if mom5d > ihsg_mom5d:
+                    sc += 1
 
-        # 6. Relative strength vs IHSG
-        if ihsg_df is not None and len(ihsg_df) >= 6:
-            ihsg_close = ihsg_df["Close"].squeeze()
-            ihsg_mom5d = (float(ihsg_close.iloc[-1]) - float(ihsg_close.iloc[-6])) \
-                         / float(ihsg_close.iloc[-6]) * 100
-            if mom5d > ihsg_mom5d:
-                sc += 1   # held up better than the market
+            # 7. MACD momentum
+            if macd_hist_now > 0:
+                sc += 1
+            if macd_hist_cross:
+                sc += 1
 
-        # 7. MACD momentum (max 2 points)
-        if macd_hist_now > 0:
-            sc += 1   # histogram positive — bullish momentum
-        if macd_hist_cross:
-            sc += 1   # bullish crossover within last 2 bars
+            # ATR-based stop: support minus 1.5 ATRs, never deeper than -8%
+            stop = max(round(sup_20 - 1.5 * atr14), round(price * 0.92))
 
-        sc = min(sc, 10)  # cap at 10 for consistent display
+        # ── Mode B: Momentum (bull market) ──────────────────────────────────
+        else:
+            sc = 0
 
-        # Lot sizing: based on score strength within budget
+            # 1. Price structure — above key MAs
+            above_ma20 = price > ma20
+            above_ma50 = price > ma50
+            if above_ma20 and above_ma50:
+                sc += 2   # bull structure confirmed
+            elif above_ma20:
+                sc += 1   # early uptrend
+
+            # 2. Breakout from 20-day range
+            near_high = price >= res_20 * 0.98
+            if near_high and vol_ratio >= 1.2:
+                sc += 2   # volume-confirmed breakout
+            elif near_high:
+                sc += 1   # price breaking out, volume meh
+
+            # 3. Volume + momentum confirmation
+            if vol_ratio >= 1.5 and mom1d > 2:
+                sc += 2   # strong volume + strong up day
+            elif vol_ratio >= 1.2 and mom1d > 1:
+                sc += 1   # mild accumulation
+
+            # 4. RSI goldilocks zone (momentum, not overbought)
+            if 50 <= r <= 70:
+                sc += 1
+
+            # 5. ADX trend strength
+            if adx14 > 30:
+                sc += 2   # strong trend
+            elif adx14 > 25:
+                sc += 1   # trending
+
+            # 6. MACD momentum
+            if macd_hist_now > 0:
+                sc += 1
+            if macd_hist_cross:
+                sc += 1
+
+            # Momentum stop: 1.5 ATR below 20-day MA (trailing proxy)
+            stop = max(round(ma20 - 1.5 * atr14), round(price * 0.94))
+
+        # ── Common post-scoring ─────────────────────────────────────────────
+        sc = min(sc, 10)  # cap at 10
+
+        # Lot sizing
         max_lots = max(1, int(BUDGET / (price * 100)))
         if   sc >= 8: lots = max_lots
         elif sc >= 6: lots = max(1, int(max_lots * 0.6))
         else:         lots = max(1, int(max_lots * 0.4))
 
-        # MA20 trend is shown as context, not scored
         trend = "↑ uptrend" if price > ma20 else "↓ downtrend"
-
-        target = round(price * 1.05)   # +5% take-profit target
+        target = round(price * 1.05)
 
         return {
             "ticker":     ticker,
@@ -318,15 +396,18 @@ def _score(df, ticker, tier, ihsg_df=None):
             "mom5d":      round(mom5d, 1),
             "support":    round(sup_20),
             "sup_50":     round(sup_50),
-            "resistance": round(res_20),  # kept as context (upside ceiling)
+            "resistance": round(res_20),
             "target":     target,
             "stop":       stop,
             "atr":        round(atr14, 1),
             "ma20":       round(ma20),
+            "ma50":       round(ma50),
             "trend":      trend,
-            "hammer":     _hammer(df),
+            "hammer":     _hammer(df) if mode == "mean-reversion" else False,
+            "adx":        round(adx14, 1),
             "lots":       lots,
             "score":      sc,
+            "mode":       mode,
             "macd_histogram": round(macd_hist_now, 2),
             "macd_line":    round(float(macd_line.iloc[-1]), 2),
             "macd_signal":  round(float(macd_signal_line.iloc[-1]), 2),
@@ -351,10 +432,13 @@ def run_scan(on_progress=None):
     data_map = _batch_fetch(tickers)
 
     # IHSG trend filter: if market is in downtrend, raise bar for all tiers
+    # Also selects scoring mode: mean-reversion (bear) vs momentum (bull)
     ihsg_bearish = False
+    mode = "momentum"
     if ihsg_df is not None and len(ihsg_df) >= 20:
         ihsg_close   = ihsg_df["Close"].squeeze()
         ihsg_bearish = float(ihsg_close.iloc[-1]) < float(ihsg_close.iloc[-20:].mean())
+        mode = "mean-reversion" if ihsg_bearish else "momentum"
 
     min_score_adj = {tier: min(v + (2 if ihsg_bearish else 0), 10) for tier, v in MIN_SCORE.items()}
 
@@ -365,10 +449,9 @@ def run_scan(on_progress=None):
         df = data_map.get(ticker)
         if df is None:
             continue
-        s = _score(df, ticker, tier, ihsg_df)
+        s = _score(df, ticker, tier, ihsg_df, mode=mode)
         if s and s["score"] >= min_score_adj[tier]:
             s["market"] = "bear" if ihsg_bearish else "bull"
-
             results.append(s)
 
     results.sort(key=lambda x: x["score"], reverse=True)
