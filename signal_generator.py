@@ -40,9 +40,10 @@ def fmt_signals_md(results):
         upside = (s["target"] - s["price"]) / s["price"] * 100
         risk   = (s["price"] - s["stop"]) / s["price"] * 100
         cost   = s["price"] * s["lots"] * 100
-        mode_icon = " 🚀" if s.get("mode") == "momentum" else " 📉"
+        cat_icon = s.get("category_icon", "")
+        cat_name = s.get("category", "").capitalize()
         lines.append(
-            f"### {rank}. {s['ticker']}{mode_icon} [{s.get('tier','')}] — Score {s['score']}/10\n"
+            f"### {rank}. {s['ticker']} {cat_icon} {cat_name} [{s.get('tier','')}] — Score {s['score']}/10\n"
             f"- **Buy at:** Rp {s['price']:,}\n"
             f"- **Target:** Rp {s['target']:,} (+5%) — take profit here\n"
             f"- **Stop-loss:** Rp {s['stop']:,} (-{risk:.1f}%) | Exit after 3 trading days regardless\n"
