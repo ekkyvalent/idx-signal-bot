@@ -23,7 +23,16 @@ from scanner import (
 # ── Config ────────────────────────────────────────────────────────────────────
 
 BOT_TOKEN      = os.environ["BOT_TOKEN"]
-GROUP_CHAT_ID  = int(os.environ["GROUP_CHAT_ID"])   # group for reports & alerts
+
+def _parse_chat_id(raw):
+    """Support both '-100123' and topic format '-100123:200' (group:topic)."""
+    raw = str(raw).strip()
+    topic = None
+    if ":" in raw:
+        raw, topic = raw.split(":", 1)
+    return int(raw), (int(topic) if topic else None)
+
+GROUP_CHAT_ID, GROUP_TOPIC_ID = _parse_chat_id(os.environ["GROUP_CHAT_ID"])
 AUTHORIZED_UID = int(os.environ["AUTHORIZED_UID"])  # Ekky's Telegram ID
 DATA_DIR  = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
 TXN_FILE  = os.path.join(DATA_DIR, "transactions.json")
@@ -250,6 +259,14 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Scheduled morning report ──────────────────────────────────────────────────
 
+def _send_kw():
+    """Chat + topic kwargs for Telegram send_message."""
+    kw = {"chat_id": GROUP_CHAT_ID}
+    if GROUP_TOPIC_ID is not None:
+        kw["message_thread_id"] = GROUP_TOPIC_ID
+    return kw
+
+
 async def morning_report(context: ContextTypes.DEFAULT_TYPE):
     today_str = date.today().strftime("%d %b %Y")
     results, portfolio = await asyncio.to_thread(_blocking_scan)
@@ -258,14 +275,14 @@ async def morning_report(context: ContextTypes.DEFAULT_TYPE):
     sig_text  = fmt_signals(results, today_str)
 
     await context.bot.send_message(
-        chat_id=GROUP_CHAT_ID,
         text=f"☀️ *Good morning! IDX Report — {today_str}*\n\n{port_text}",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        **_send_kw(),
     )
     await context.bot.send_message(
-        chat_id=GROUP_CHAT_ID,
         text=f"📊 *Buy Signals — {today_str}*\n\n{sig_text}",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        **_send_kw(),
     )
 
 
@@ -306,28 +323,28 @@ async def price_alert_check(context: ContextTypes.DEFAULT_TYPE):
             if key not in _alerted:
                 _alerted.add(key)
                 await context.bot.send_message(
-                    chat_id=GROUP_CHAT_ID,
                     text=(
                         f"🎯 *TAKE PROFIT — {ticker}*\n\n"
                         f"• Now: Rp {now_price:,.0f} | Target: Rp {target:,}\n"
                         f"• Bought at Rp {buy:,} ({pct:+.1f}%)\n"
                         f"→ Price has hit your +5% target!"
                     ),
-                    parse_mode="Markdown"
+                    parse_mode="Markdown",
+                    **_send_kw(),
                 )
         elif stop and now_price <= stop:
             key = f"{pos_id}:sl"
             if key not in _alerted:
                 _alerted.add(key)
                 await context.bot.send_message(
-                    chat_id=GROUP_CHAT_ID,
                     text=(
                         f"⚠️ *PRICE ALERT — {ticker}*\n\n"
                         f"• Now: Rp {now_price:,.0f} | Alert level: Rp {stop:,}\n"
                         f"• Bought at Rp {buy:,} ({pct:+.1f}%)\n"
                         f"→ Down -5% from your entry. FYI only — hold to day 3 per strategy."
                     ),
-                    parse_mode="Markdown"
+                    parse_mode="Markdown",
+                    **_send_kw(),
                 )
 
 

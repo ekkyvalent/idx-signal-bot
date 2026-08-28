@@ -1,0 +1,18 @@
+[Unit]
+Description=IDX Signal Telegram Bot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/workspace/stock-trading
+EnvironmentFile=/home/ubuntu/workspace/stock-trading/secrets/.env
+ExecStart=/home/ubuntu/workspace/stock-trading/venv/bin/python3 bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
