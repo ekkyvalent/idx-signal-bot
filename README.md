@@ -1,10 +1,10 @@
 # IDX Signal Bot
 
-A Telegram bot that scans **103 stocks** on the Indonesia Stock Exchange (IDX) every morning, scores them with a **dual-mode technical system**, and sends buy signals to your Telegram group. Built for short-term swing trading (3-day hold, +5% take-profit target).
+A Telegram bot that scans **101 stocks** on the Indonesia Stock Exchange (IDX) every morning, scores them with a **3-category technical system** (Reversal / Breakout / Momentum), and sends buy signals to your Telegram group. Built for short-term swing trading (3-day hold, +5% take-profit target).
 
-The bot automatically detects the market regime (bull vs bear) and selects the appropriate scoring mode — **momentum** in uptrends, **mean-reversion** in downtrends. So you get relevant signals whether the market is rallying or crashing.
+The bot automatically detects the market regime (bull vs bear via IHSG vs its own 20-day MA) and raises the signal threshold in downtrends — so weak setups get filtered exactly when the market is dangerous.
 
-**Backtested result:** Score >= 9 signals, 3-day exit, +5% target -> **+5.8% annual return**, **54.9% win rate** (May 2025 to May 2026).
+**Backtested result:** (old single-mode system) Score >= 9 signals, 3-day exit, +5% target -> **+5.8% annual return**, **54.9% win rate** (May 2025 to May 2026). The 3-category system has not been backtested yet.
 
 ---
 
@@ -13,7 +13,7 @@ The bot automatically detects the market regime (bull vs bear) and selects the a
 Every weekday at **08:15 AM WIB** (Western Indonesia Time), the bot posts two messages to your Telegram group:
 
 1. **Portfolio check** — current price for each open position, unrealised P&L, and whether to hold, take profit, or exit
-2. **Buy signals** — top 5 stocks scoring >= 9/10, ranked by score, with tier labels and mode tags
+2. **Buy signals** — top 5 stocks scoring >= 8/10, ranked by score, with tier labels and category tags
 
 You act on the signals manually through your IDX broker (Stockbit or any other).
 
@@ -24,7 +24,7 @@ Every trade ends exactly one of two ways:
 - **Take profit** — set a Stockbit auto-sell at the +5% target when you buy
 - **Day 3** — sell at market price on the 3rd trading day, no exceptions, skip weekends and IDX holidays
 
-No percentage-based stop-loss. No panic selling. Hold until one triggers.
+No percentage-based stop-loss. No panic selling. Hold until one triggers. (The bot's -5% alert is informational only.)
 
 ---
 
@@ -103,7 +103,7 @@ Best for established bull markets and strong ADX trends.
 
 | **Minimum score to appear:** 8 for all tiers
 | **When IHSG is in a downtrend:** threshold raised to 9 — only the strongest setups qualify
-- **Average daily volume:** must be >= 500,000 shares over 20 days — illiquid stocks are always excluded
+- **Average daily volume:** must be >= 500,000 shares — illiquid stocks are always excluded
 
 ### Signal Context
 
@@ -112,24 +112,37 @@ Every signal includes:
 - Support, resistance, MA20, MA50 levels
 - ADX (trend strength), MACD histogram
 - Suggested lots based on budget allocation
-- Mode tag (Momentum or Reversal)
 
 ---
 
 ## Stock Universe
 
-103 tickers across three tiers:
+101 tickers across three tiers:
 
 | Tier | Count | Source |
 |---|---|---|
 | 🔵 Blue Chip | 47 | LQ45 (rebalances Feb/May/Aug/Nov) |
 | 🟡 Mid-cap | 38 | IDX80 extras beyond LQ45 |
-| 🔴 Small Cap | 18 | Liquid stocks priced <= Rp 1,000 |
+| 🔴 Small Cap | 16 | Liquid stocks priced <= Rp 1,000 |
 
 LQ45 tickers (May to July 2026):
 AALI, ADRO, AKRA, AMMN, AMRT, ANTM, ARTO, ASII, BBCA, BBNI, BBRI, BBTN, BMRI, BRPT, BUKA, CPIN, CUAN, DEWA, EMTK, ESSA, EXCL, GOTO, HEAL, HRUM, HRTA, ICBP, INCO, INDF, INTP, ISAT, ITMG, KLBF, MAPA, MBMA, MDKA, MEDC, MIKA, MNCN, PGAS, PTBA, SMGR, TBIG, TLKM, TOWR, UNTR, UNVR, WIFI
 
 Update `scanner.py` with the latest LQ45 list every rebalancing period.
+
+---
+
+## Data Source
+
+**Live scans use the TradingView Scanner API** — free, no API key, one request for the entire universe (~1 second), and it works from any IP including cloud VPSes that Yahoo Finance blocks. It returns pre-computed indicators (RSI, ADX, ATR, MACD, SMA20/50, 1M/3M high-low, weekly performance) which the scanner scores directly.
+
+Approximations vs raw candle math (documented in `scanner.py`):
+- Average volume: 30-day (scanner field) instead of 20-day ex-today
+- 5-day momentum: weekly performance (`Perf.W`)
+- 20-day support/resistance: 1-month low/high
+- MACD crossover: 1-bar lookback instead of 2
+
+**Backtests still use `yfinance`** (1 year of daily candles, no-lookahead scoring). Note: Yahoo Finance blocks most cloud VPS IPs — run backtests from a residential IP (your laptop).
 
 ---
 
@@ -139,7 +152,7 @@ Update `scanner.py` with the latest LQ45 list every rebalancing period.
 
 | Command | Description |
 |---|---|
-| `/signals` | Run a full universe scan now (~60-90 seconds) |
+| `/signals` | Run a full universe scan now (~2 seconds) |
 | `/portfolio` | Check all open positions with current prices and P&L |
 | `/bought TICKER LOTS PRICE` | Log a buy, e.g. `/bought BKSL 9 102` |
 | `/sold TICKER PRICE` | Log a sell and see realised P&L, e.g. `/sold BKSL 120` |
@@ -149,7 +162,7 @@ Update `scanner.py` with the latest LQ45 list every rebalancing period.
 ### Automatic Reports
 
 - **Morning report:** every weekday at 08:15 WIB — portfolio check + buy signals
-- **Price alerts:** every 5 minutes during IDX market hours (09:00-15:30 WIB) — alerts when an open position hits +5% target or -5% danger zone
+- **Price alerts:** every 5 minutes during IDX market hours (09:00-15:30 WIB) — alerts when an open position hits the +5% target or the -5% danger zone
 
 ### Authorization
 
@@ -157,7 +170,7 @@ The bot has two separate settings:
 - `GROUP_CHAT_ID` — the group/channel that receives all reports and alerts
 - `AUTHORIZED_UID` — your personal Telegram user ID, the only account allowed to run commands
 
-This means anyone in the group can read signals, but only you can log trades or run `/signals`.
+This means anyone in the group can read signals, but only you can log trades or run `/signals`. For Telegram topics, append the topic ID: `-1001234567890:200`.
 
 ---
 
@@ -166,50 +179,102 @@ This means anyone in the group can read signals, but only you can log trades or 
 ### Requirements
 
 - Python 3.10+
-- A Telegram bot token (create via BotFather)
-- Railway account (for persistent deployment)
-
-### Install
-
-```bash
-pip install -r requirements.txt
-```
+- A Telegram bot token (create via [@BotFather](https://t.me/BotFather))
+- A host: VPS (recommended), your own machine, or Railway
 
 ### Environment Variables
 
 | Variable | Description |
 |---|---|
-| `BOT_TOKEN` | Telegram bot token from BotFather |
-| `GROUP_CHAT_ID` | Chat/group ID for receiving reports (use `-100XXXX:200` for Telegram topics) |
+| `BOT_TOKEN` | Telegram bot token from BotFather (required) |
+| `GROUP_CHAT_ID` | Chat/group ID for receiving reports (use `-100XXXX:TOPIC` for Telegram topics) |
 | `AUTHORIZED_UID` | Your Telegram user ID — only this user can run commands |
-| `DATA_DIR` | Path to store `transactions.json` (default: script directory) |
+| `DATA_DIR` | Directory for `transactions.json` (default: script directory) |
 
-### Run Locally
+Keep secrets out of git — use an untracked `secrets/.env` file (chmod 600) or your host's env var UI.
+
+### Install
 
 ```bash
-BOT_TOKEN=xxx GROUP_CHAT_ID=-1001234567890 AUTHORIZED_UID=123456789 python3 bot.py
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ---
 
-## Deploy to Railway
+## Hosting Guide
+
+### Option A: VPS with systemd (recommended)
+
+Works on any Linux VPS. The TradingView data backend is specifically chosen so cloud/VPS IPs are not a problem.
+
+```bash
+# 1. Clone and install
+git clone https://github.com/ekkyvalent/idx-signal-bot.git
+cd idx-signal-bot
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+# 2. Env file
+mkdir -p secrets data
+cat > secrets/.env <<'EOF'
+BOT_TOKEN=your_bot_token_here
+GROUP_CHAT_ID=-1001234567890:200
+AUTHORIZED_UID=your_telegram_user_id
+DATA_DIR=/absolute/path/to/idx-signal-bot/data
+EOF
+chmod 600 secrets/.env
+
+# 3. Systemd unit (edit paths to match your install)
+sudo cp idx-signal-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now idx-signal-bot
+
+# 4. Verify
+systemctl status idx-signal-bot
+journalctl -u idx-signal-bot -f
+```
+
+`idx-signal-bot.service` uses `Restart=always`, so the bot auto-recovers from crashes and reboots.
+
+**Deploying code updates:**
+
+```bash
+git pull origin main
+sudo systemctl restart idx-signal-bot
+```
+
+### Option B: Local machine (laptop/desktop)
+
+Same install steps, then run in a terminal:
+
+```bash
+set -a; source secrets/.env; set +a
+python3 bot.py
+```
+
+Fine for testing; not recommended 24/7 (the morning report needs the process alive at 08:15 WIB).
+
+**CLI-only scan** (no Telegram, writes `signals_latest.md`):
+
+```bash
+python3 signal_generator.py
+```
+
+### Option C: Railway (legacy, still works)
 
 1. Create a new Railway project from your GitHub repo
 2. Set the environment variables listed above
-3. Add a persistent volume mounted at `/data` — this is where `transactions.json` lives
-4. Railway uses `Procfile`: `worker: python bot.py`
-
-Redeploy after changes:
+3. Add a persistent volume mounted at `/data` — set `DATA_DIR=/data`
+4. Railway uses the included `Procfile`: `worker: python bot.py`
 
 ```bash
-railway up
+railway up      # deploy
+railway logs    # check logs
 ```
 
-Check logs:
-
-```bash
-railway logs
-```
+Note: Railway's free trial expired for this project in Aug 2026 — the bot moved to a VPS. Railway remains a valid alternative if you prefer managed hosting (Hobby plan is $5/mo).
 
 ---
 
@@ -217,13 +282,16 @@ railway logs
 
 ```
 stock-trading/
-  scanner.py            Core logic — dual-mode scoring, data fetching, portfolio tracking
-  signal_generator.py   Local runner — saves signals_latest.md + Mac notification
-  bot.py                Telegram bot with morning report, price alerts, commands
-  backtest.py           Strategy backtester and capital simulator
-  transactions.json     Local trade log (auto-created, gitignored)
-  requirements.txt      Python dependencies
-  Procfile              Railway worker config
+  scanner.py              Core logic — 3-category scoring, TradingView backend, portfolio tracking
+  bot.py                  Telegram bot — commands, morning report, price alerts
+  signal_generator.py     CLI runner — writes signals_latest.md
+  backtest.py             Strategy backtester and capital simulator (yfinance)
+  backtest_compare.py     Backtest variant comparing scoring configs
+  idx-signal-bot.service  systemd unit for VPS deployment
+  Procfile                Railway worker config
+  requirements.txt        Python dependencies
+  secrets/.env            Runtime env vars (untracked, chmod 600)
+  data/transactions.json  Trade log (auto-created, gitignored)
 ```
 
 ---
@@ -234,16 +302,17 @@ stock-trading/
 python3 backtest.py
 ```
 
-Downloads 1 year of OHLCV data for all 103 tickers, scores every stock on every day (no lookahead), and simulates trading the top signals. Takes 5-10 minutes.
+Downloads 1 year of OHLCV data via yfinance for all tickers, scores every stock on every day (no lookahead), and simulates trading the top signals. Takes 5-10 minutes. **Requires a residential IP** — Yahoo Finance blocks most cloud VPS IPs.
 
 ---
 
-## Data Source and Limitations
+## Limitations
 
-- **Data:** Yahoo Finance end-of-day via `yfinance`. Signals use yesterday's close, not today's open. Intraday price alerts use 5-minute data.
-- **No macro awareness:** The system is purely technical. A stock can look perfect on the charts and still be in a fundamental downtrend. Always do your own due diligence.
+- **Purely technical:** No macro/news awareness. A stock can look perfect on the charts and still be in a fundamental downtrend. Always do your own due diligence.
+- **TradingView approximations:** Indicator windows are approximate (see Data Source above) — scores can differ slightly from raw-candle math.
 - **Fees assumed:** 0.15% buy / 0.35% sell (0.25% broker + 0.1% PPh final). Adjust `FEE_BUY` and `FEE_SELL` in `scanner.py` if your broker charges differently.
 - **Holiday calendar:** IDX 2026 holidays are hardcoded in `scanner.py` (`IDX_HOLIDAYS_2026`). Update at the start of each year from idx.co.id.
+- **Universe is manual:** LQ45 rebalances every Feb/May/Aug/Nov — update the ticker lists in `scanner.py`.
 
 ---
 
